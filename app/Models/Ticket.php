@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'priority',
     'status',
     'category',
+    'channel',
     'due_at',
     'resolved_at',
     'closed_at',
@@ -52,6 +53,9 @@ class Ticket extends Model
             }
             if (empty($ticket->category)) {
                 $ticket->category = TicketCategory::Technical;
+            }
+            if (empty($ticket->channel)) {
+                $ticket->channel = 'email';
             }
             if (empty($ticket->priority)) {
                 $ticket->priority = TicketPriority::Medium;
@@ -137,6 +141,110 @@ class Ticket extends Model
         }
 
         return round($this->created_at->diffInMinutes($this->resolved_at) / 60, 1);
+    }
+
+    public function shortNumber(): string
+    {
+        if (preg_match('/-(\d+)$/', $this->ticket_number, $matches)) {
+            return '#-'.sprintf('%03d', (int) $matches[1]);
+        }
+
+        return $this->ticket_number;
+    }
+
+    /**
+     * Calculate SLA Health (On Track, Warning, Breached)
+     */
+    public function health(): array
+    {
+        if (in_array($this->status, [TicketStatus::Resolved, TicketStatus::Closed], true)) {
+            return [
+                'label' => 'On Track',
+                'dot' => 'bg-slate-700',
+                'badge' => 'bg-slate-100 text-slate-700',
+            ];
+        }
+
+        if ($this->isOverdue()) {
+            return [
+                'label' => 'Breached',
+                'dot' => 'bg-rose-500',
+                'badge' => 'bg-rose-100/70 text-rose-700',
+            ];
+        }
+
+        if ($this->due_at) {
+            $remainingHours = now()->diffInHours($this->due_at, false);
+            if ($remainingHours <= 12) {
+                return [
+                    'label' => 'Warning',
+                    'dot' => 'bg-amber-500',
+                    'badge' => 'bg-amber-100/70 text-amber-800',
+                ];
+            }
+        }
+
+        return [
+            'label' => 'On Track',
+            'dot' => 'bg-slate-700',
+            'badge' => 'bg-slate-100 text-slate-700',
+        ];
+    }
+
+    /**
+     * Display icon & color for priority
+     */
+    public function priorityDisplay(): array
+    {
+        return match ($this->priority) {
+            TicketPriority::Urgent => [
+                'icon' => '↑',
+                'label' => 'Urgent',
+                'iconColor' => 'text-red-500 font-bold',
+                'textColor' => 'text-slate-800 font-medium',
+            ],
+            TicketPriority::High => [
+                'icon' => '↑',
+                'label' => 'High',
+                'iconColor' => 'text-orange-500 font-bold',
+                'textColor' => 'text-slate-800 font-medium',
+            ],
+            TicketPriority::Medium => [
+                'icon' => '—',
+                'label' => 'Medium',
+                'iconColor' => 'text-sky-500 font-bold',
+                'textColor' => 'text-slate-700 font-medium',
+            ],
+            TicketPriority::Low => [
+                'icon' => '○',
+                'label' => 'Todo',
+                'iconColor' => 'text-slate-400 text-[10px]',
+                'textColor' => 'text-slate-600 font-medium',
+            ],
+        };
+    }
+
+    /**
+     * Display icon for channel
+     */
+    public function channelDisplay(): array
+    {
+        $chan = strtolower($this->channel ?? 'email');
+
+        return match ($chan) {
+            'chat' => [
+                'label' => 'Chat',
+                'icon' => 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
+            ],
+            'slack' => [
+                'label' => 'Slack',
+                'icon' => 'M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z',
+            ],
+            default => [
+                'label' => 'Email',
+                'icon' => 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+            ],
+        };
     }
 
     /**

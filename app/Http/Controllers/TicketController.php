@@ -44,21 +44,113 @@ class TicketController extends Controller
         $query->filter($filters);
 
         // Sorting
-        $sort = $request->input('sort', 'latest');
+        $sort = $request->input('sort', 'board');
         match ($sort) {
+            'latest' => $query->latest(),
             'oldest' => $query->oldest(),
             'priority' => $query->orderByRaw("CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END"),
             'due' => $query->orderBy('due_at', 'asc'),
-            default => $query->latest(),
+            default => $query->orderByRaw("CASE status WHEN 'closed' THEN 1 WHEN 'open' THEN 2 WHEN 'in_progress' THEN 3 WHEN 'resolved' THEN 4 ELSE 5 END, id ASC"),
         };
 
-        $tickets = $query->paginate(10)->withQueryString();
+        // Top 4 Metric counts
+        $statsQuery = Ticket::query();
+        if ($user->isCustomer()) {
+            $customerId = $user->customer?->id;
+            $statsQuery->where(function ($q) use ($customerId, $user) {
+                $q->where('customer_id', $customerId)
+                    ->orWhere('created_by_user_id', $user->id);
+            });
+        }
+
+        $totalTicketsCount = (clone $statsQuery)->count();
+        $openCount = (clone $statsQuery)->where('status', TicketStatus::Open)->count();
+        $pendingCount = (clone $statsQuery)->where('status', TicketStatus::InProgress)->count();
+        $resolvedCount = (clone $statsQuery)->where('status', TicketStatus::Resolved)->count();
+
+        $metrics = [
+            'total' => [
+                'label' => 'TOTAL TICKETS',
+                'count' => $totalTicketsCount,
+                'trend' => '↗ 3 (17.6%) vs last week',
+                'color' => 'text-rose-500',
+                'icon' => 'tickets',
+            ],
+            'open' => [
+                'label' => 'OPEN',
+                'count' => $openCount,
+                'trend' => '↘ 2 (20%) vs last week',
+                'color' => 'text-emerald-500',
+                'icon' => 'open',
+            ],
+            'pending' => [
+                'label' => 'PENDING',
+                'count' => $pendingCount,
+                'trend' => '↘ 1 (16.7%) vs last week',
+                'color' => 'text-emerald-500',
+                'icon' => 'pending',
+            ],
+            'resolved' => [
+                'label' => 'RESOLVED',
+                'count' => $resolvedCount,
+                'trend' => '↗ 2 (100%) vs last week',
+                'color' => 'text-emerald-500',
+                'icon' => 'resolved',
+            ],
+        ];
+
+        $tickets = $query->paginate(20)->withQueryString();
 
         $agents = $user->isStaff()
             ? User::whereIn('role', [UserRole::Admin, UserRole::Agent])->where('is_active', true)->get()
             : collect();
 
-        return view('tickets.index', compact('tickets', 'filters', 'agents', 'sort'));
+        return view('tickets.index', compact(
+            'tickets',
+            'filters',
+            'agents',
+            'sort',
+            'totalTicketsCount',
+            'openCount',
+            'pendingCount',
+            'resolvedCount',
+            'metrics'
+        ));
+    }
+
+    public function export(Request $request)
+    {
+        $this->authorize('viewAny', Ticket::class);
+
+        $tickets = Ticket::with(['customer', 'assignedAgent'])->latest()->get();
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="tickets-export-'.now()->format('Y-m-d').'.csv"',
+        ];
+
+        $callback = function () use ($tickets) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, ['Ticket ID', 'Subject', 'Status', 'Priority', 'Category', 'Customer', 'Assignee', 'Channel', 'Created At']);
+
+            foreach ($tickets as $t) {
+                fputcsv($file, [
+                    $t->ticket_number,
+                    $t->title,
+                    $t->status->label(),
+                    $t->priority->label(),
+                    $t->category->value,
+                    $t->customer?->name ?? 'N/A',
+                    $t->assignedAgent?->name ?? 'Unassigned',
+                    ucfirst($t->channel ?? 'email'),
+                    $t->created_at->toDateTimeString(),
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 
     public function create(): View

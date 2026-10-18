@@ -84,4 +84,16 @@ class User extends Authenticatable
 
         return $initials ?: 'U';
     }
+
+    public function avatarUrl(): ?string
+    {
+        if (str_contains(strtolower($this->name), 'jason') || $this->email === 'jason@supportdesk.test') {
+            return 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&h=120&q=80';
+        }
+        if ($this->email === 'sarah@helpdesk.com') {
+            return 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&h=120&q=80';
+        }
+
+        return null;
+    }
 }

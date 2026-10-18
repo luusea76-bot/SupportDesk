@@ -29,6 +29,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // Tickets
+    Route::get('/tickets/export', [TicketController::class, 'export'])->name('tickets.export');
     Route::resource('tickets', TicketController::class);
     Route::post('/tickets/{ticket}/comments', [TicketCommentController::class, 'store'])->name('tickets.comments.store');
     Route::post('/tickets/{ticket}/status', [TicketController::class, 'changeStatus'])->name('tickets.status');

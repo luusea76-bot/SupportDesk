@@ -13,7 +13,7 @@ enum TicketStatus: string
     {
         return match ($this) {
             self::Open => 'Open',
-            self::InProgress => 'In Progress',
+            self::InProgress => 'Pending',
             self::Resolved => 'Resolved',
             self::Closed => 'Closed',
         };
@@ -22,10 +22,10 @@ enum TicketStatus: string
     public function badgeClasses(): string
     {
         return match ($this) {
-            self::Open => 'bg-indigo-50 text-indigo-700 border-indigo-200',
-            self::InProgress => 'bg-amber-50 text-amber-700 border-amber-200',
-            self::Resolved => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            self::Closed => 'bg-slate-100 text-slate-600 border-slate-200',
+            self::Open => 'bg-sky-100 text-sky-700',
+            self::InProgress => 'bg-amber-100 text-amber-800',
+            self::Resolved => 'bg-emerald-100 text-emerald-800',
+            self::Closed => 'bg-slate-100 text-slate-600',
         };
     }
 
